@@ -25,53 +25,63 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
     private final String CONST_DB_USERNAME = "username";
     private final String CONST_DB_NAME = "dbname";
     private final String CONST_DB_HOST = "host";
+    private final String CONST_DB_PORT = "port";
 
     @Override
     public String handleRequest(Map<String,String> cmd, Context context) {
 
-        RotateHandlerCommand rotateHandlerCommand = new RotateHandlerCommand();
-        rotateHandlerCommand.setClientRequestToken(cmd.get("ClientRequestToken"));
-        rotateHandlerCommand.setSecretId(cmd.get("SecretId"));
-        rotateHandlerCommand.setStep(cmd.get("Step"));
-        secretName = rotateHandlerCommand.getSecretId();
-
-        System.out.println(String.format("Secret id: %s", rotateHandlerCommand.getSecretId()));
-        System.out.println(String.format("Step: %s", rotateHandlerCommand.getStep()));
-        System.out.println(String.format("Client Request Token: %s", rotateHandlerCommand.getClientRequestToken()));
-
-        AWS aws = new AWS();
-        AWSSecretsManager client = aws.getClient();
-
-        DescribeSecretRequest dsr = new DescribeSecretRequest();
-        dsr.setSecretId(rotateHandlerCommand.getSecretId());
-        DescribeSecretResult dsres = client.describeSecret(dsr);
-        String errorMessage;
-
-        if (!dsres.isRotationEnabled()) {
-            errorMessage = String.format("Secret %s is not enabled for Rotation", rotateHandlerCommand.getSecretId());
-            System.out.println(errorMessage);
-            return "ERROR";
-        }
-        Map<String, List<String>> versionStageData = dsres.getVersionIdsToStages();
-        if (!versionStageData.containsKey(rotateHandlerCommand.getClientRequestToken())) {
-            errorMessage = String.format("Secret %s, version %s has no stage for rotation of secret", rotateHandlerCommand.getSecretId(), rotateHandlerCommand.getClientRequestToken());
-            System.out.println(errorMessage);
-            return "ERROR";
-        }
-        List<String> tokenData = versionStageData.get(rotateHandlerCommand.getClientRequestToken());
-        if (tokenData.contains(CONST_AWS_CURRENT)) {
-            errorMessage = String.format("Secret %s is already at stage %s", rotateHandlerCommand.getSecretId(), CONST_AWS_CURRENT);
-            System.out.println(errorMessage);
-            return "ERROR";
-        }
-        if (!tokenData.contains(CONST_AWS_PENDING)) {
-            errorMessage = String.format("Secret %s is not set as AWS Pending for rotation", rotateHandlerCommand.getSecretId());
-            System.out.println(errorMessage);
-            return "ERROR";
-        }
-        String step = rotateHandlerCommand.getStep();
-
         try {
+
+            RotateHandlerCommand rotateHandlerCommand = new RotateHandlerCommand();
+            rotateHandlerCommand.setClientRequestToken(cmd.get("ClientRequestToken"));
+            rotateHandlerCommand.setSecretId(cmd.get("SecretId"));
+            rotateHandlerCommand.setStep(cmd.get("Step"));
+            secretName = rotateHandlerCommand.getSecretId();
+
+            System.out.println(String.format("Secret id: %s", rotateHandlerCommand.getSecretId()));
+            System.out.println(String.format("Step: %s", rotateHandlerCommand.getStep()));
+            System.out.println(String.format("Client Request Token: %s", rotateHandlerCommand.getClientRequestToken()));
+
+            System.out.println("Getting Client");
+            AWS aws = new AWS();
+            AWSSecretsManager client = aws.getClient();
+            System.out.println("Client Retrieved");
+
+
+            DescribeSecretRequest dsr = new DescribeSecretRequest();
+            dsr.setSecretId(rotateHandlerCommand.getSecretId());
+            System.out.println("Describing Secret");
+            DescribeSecretResult dsres = client.describeSecret(dsr);
+            System.out.println("Secret Described");
+            String errorMessage;
+
+            if (!dsres.isRotationEnabled()) {
+                errorMessage = String.format("Secret %s is not enabled for Rotation", rotateHandlerCommand.getSecretId());
+                System.out.println(errorMessage);
+                return "ERROR";
+            } else {
+                System.out.println(String.format("Secret '%s' is enabled for rotation", rotateHandlerCommand.getSecretId()));
+            }
+
+            Map<String, List<String>> versionStageData = dsres.getVersionIdsToStages();
+            if (!versionStageData.containsKey(rotateHandlerCommand.getClientRequestToken())) {
+                errorMessage = String.format("Secret %s, version %s has no stage for rotation of secret", rotateHandlerCommand.getSecretId(), rotateHandlerCommand.getClientRequestToken());
+                System.out.println(errorMessage);
+                return "ERROR";
+            }
+            List<String> tokenData = versionStageData.get(rotateHandlerCommand.getClientRequestToken());
+            if (tokenData.contains(CONST_AWS_CURRENT)) {
+                errorMessage = String.format("Secret %s is already at stage %s", rotateHandlerCommand.getSecretId(), CONST_AWS_CURRENT);
+                System.out.println(errorMessage);
+                return "ERROR";
+            }
+            if (!tokenData.contains(CONST_AWS_PENDING)) {
+                errorMessage = String.format("Secret %s is not set as AWS Pending for rotation", rotateHandlerCommand.getSecretId());
+                System.out.println(errorMessage);
+                return "ERROR";
+            }
+            String step = rotateHandlerCommand.getStep();
+
             switch (step) {
                 case "createSecret":
                     System.out.println("Going to create secret");
@@ -83,7 +93,7 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
                     break;
                 case "testSecret":
                     System.out.println("Going to test secret");
-                    testSecret(rotateHandlerCommand.getSecretId(), rotateHandlerCommand.getClientRequestToken());
+                    testSecret(rotateHandlerCommand.getClientRequestToken());
                     break;
                 case "finishSecret":
                     System.out.println("Going to finish secret");
@@ -134,7 +144,7 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
 
         try {
             pending_prop = aws.getSecret(secretName, token, CONST_AWS_PENDING);
-            conn = Oracle.connect(pending_prop.getProperty(CONST_DB_HOST), pending_prop.getProperty(CONST_DB_NAME), pending_prop.getProperty(CONST_DB_USERNAME), pending_prop.getProperty(CONST_DB_PASSWORD));
+            conn = Oracle.connect(pending_prop.getProperty(CONST_DB_HOST), Integer.parseInt(pending_prop.getProperty(CONST_DB_PORT)), pending_prop.getProperty(CONST_DB_NAME), pending_prop.getProperty(CONST_DB_USERNAME), pending_prop.getProperty(CONST_DB_PASSWORD));
             Statement stmt = conn.createStatement();
             stmt.execute("SELECT SYSDATE FROM DUAL");
             conn.close();
@@ -145,14 +155,14 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
             System.out.println("The proposed passed cannot connect to Oracle, changing password");
             try {
                 Properties prop = aws.getSecret(secretName, "", CONST_AWS_CURRENT);
-                conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
+                conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), Integer.parseInt(prop.getProperty(CONST_DB_PORT)), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
                 System.out.println(String.format("Connected to Oracle using %s password", CONST_AWS_CURRENT));
             } catch (SQLException ex2) {
                 // Cloud not connect to the Database, try the Previous Password
                 try {
                     Properties prop = aws.getSecret(secretName, "", CONST_AWS_PREVIOUS);
                     System.out.println(String.format("Connected to Oracle using %s password", CONST_AWS_PREVIOUS));
-                    conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
+                    conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), Integer.parseInt(prop.getProperty(CONST_DB_PORT)), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
                 } catch (SQLException ex3) {
                     String sError = String.format("SetSecret: Unable to log into database with Previous, Current, or Pending Secret of ARN %s", arn);
                     System.out.println(sError);
@@ -160,6 +170,7 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
                 }
             }
         } catch (java.lang.ClassNotFoundException | JsonProcessingException ex) {
+            System.out.println(String.format("Critical Error: %s", ex.getMessage()));
             throw ex;
         }
 
@@ -171,12 +182,12 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
 
     }
 
-    private Boolean testSecret(String arn, String token) {
+    private Boolean testSecret(String token) {
         AWS aws = new AWS();
 
         try {
             Properties prop = aws.getSecret(secretName, token, CONST_AWS_PENDING);
-            Connection conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
+            Connection conn = Oracle.connect(prop.getProperty(CONST_DB_HOST), Integer.parseInt(prop.getProperty(CONST_DB_PORT)), prop.getProperty(CONST_DB_NAME), prop.getProperty(CONST_DB_USERNAME), prop.getProperty(CONST_DB_PASSWORD));
             Statement stmt = conn.createStatement();
             stmt.execute("SELECT SYSDATE FROM DUAL");
             return true;
@@ -192,7 +203,7 @@ public class RotateHandler implements RequestHandler<Map<String,String>, String>
     private void finishSecret(AWSSecretsManager client, String arn, String token) {
 
         System.out.println("Confirming current password is correct before completing rotation");
-        if(testSecret(arn, token)) {
+        if(testSecret(token)) {
 
             DescribeSecretRequest dsr = new DescribeSecretRequest();
             dsr.setSecretId(arn);

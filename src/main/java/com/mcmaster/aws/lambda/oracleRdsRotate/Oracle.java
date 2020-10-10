@@ -6,10 +6,10 @@ import java.sql.*;
 
 public class Oracle {
 
-    public static Connection connect(String host, String dbname, String username, String password) throws java.sql.SQLException, java.lang.ClassNotFoundException, JsonProcessingException {
+    public static Connection connect(String host, int port, String dbname, String username, String password) throws java.sql.SQLException, java.lang.ClassNotFoundException, JsonProcessingException {
 
         DriverManager.registerDriver(new oracle.jdbc.OracleDriver());
-        String sConnection = String.format("jdbc:oracle:thin:@%s:1521:%s", host, dbname);
+        String sConnection = String.format("jdbc:oracle:thin:@%s:%d:%s", host, port, dbname);
         Connection nconn = DriverManager.getConnection(
                 sConnection,
                 username,
