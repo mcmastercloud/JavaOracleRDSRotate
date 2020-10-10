@@ -1,5 +1,0 @@
-com\mcmaster\aws\lambda\oracleRdsRotate\AWS.class
-com\mcmaster\aws\lambda\oracleRdsRotate\RotateHandler.class
-com\mcmaster\aws\lambda\oracleRdsRotate\Utilities.class
-com\mcmaster\aws\lambda\oracleRdsRotate\Oracle.class
-com\mcmaster\aws\lambda\oracleRdsRotate\RotateHandlerCommand.class
