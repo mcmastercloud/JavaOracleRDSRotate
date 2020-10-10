@@ -14,7 +14,7 @@ public class TestUtilities {
         String sRandom = Utilities.randomString(10);
         assertEquals(sRandom.length(), 10);
         System.out.println(sRandom);
-    }:wq
+    }
 
 
 }
