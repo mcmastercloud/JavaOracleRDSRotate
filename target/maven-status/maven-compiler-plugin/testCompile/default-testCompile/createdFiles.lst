@@ -1,0 +1,3 @@
+test\com\mcmaster\aws\lambda\oracleRdsRotate\harness\TestLogger.class
+test\com\mcmaster\aws\lambda\oracleRdsRotate\TestUtilities.class
+test\com\mcmaster\aws\lambda\oracleRdsRotate\harness\TestContext.class

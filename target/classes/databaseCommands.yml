@@ -1,0 +1,220 @@
+bootstrap:
+  - version: 0
+    commands:
+      - checks:
+          - SELECT COUNT(username) FROM sys.dba_users WHERE username = 'JPMCADMIN'
+        execute:
+          - DROP USER jpmcadmin CASCADE
+      - checks:
+          - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMCADMIN'
+        execute:
+          - drop role RLE_JPMCADMIN
+      - execute:
+          # Create an Admin User that will own the schema with the version configuration, so we can
+          # run rolling changes to the Oracle Database.
+          - CREATE USER jpmcadmin IDENTIFIED BY "@@ADMINPASSWORD"
+          - CREATE TABLE jpmcadmin.configuration(version NUMBER(4) NOT NULL)
+          - ALTER USER jpmcadmin QUOTA UNLIMITED ON USERS
+          - INSERT INTO jpmcadmin.configuration(version) VALUES (0)
+          # Create a Procedure for Granting Access to a User to All Tables owned by Another User
+          - >
+            CREATE PROCEDURE jpmcadmin.grant_select(username VARCHAR2, grantee VARCHAR2) AS
+            BEGIN
+                FOR r IN (
+                    SELECT owner, table_name
+                    FROM all_tables
+                    WHERE owner = username
+                )
+                LOOP
+                    EXECUTE IMMEDIATE
+                        'GRANT SELECT ON '||r.owner||'.'||r.table_name||' to ' || grantee;
+                END LOOP;
+            END;
+          # Create a Procedure for Granting Access to a User to All Tables owned by Another User
+          - >
+            CREATE PROCEDURE jpmcadmin.grant_write(username VARCHAR2, grantee VARCHAR2) AS
+            BEGIN
+                FOR r IN (
+                    SELECT owner, table_name
+                    FROM all_tables
+                    WHERE owner = username
+                )
+                LOOP
+                    EXECUTE IMMEDIATE
+                        'GRANT SELECT, INSERT, UPDATE, DELETE ON '||r.owner||'.'||r.table_name||' to ' || grantee;
+                END LOOP;
+            END;
+          # Create a Procedure for Granting Access to a User to All Tables owned by Another User
+          - >
+            CREATE PROCEDURE jpmcadmin.grant_admin(username VARCHAR2, grantee VARCHAR2) AS
+            BEGIN
+                FOR r IN (
+                    SELECT owner, table_name
+                    FROM all_tables
+                    WHERE owner = username
+                )
+                LOOP
+                    EXECUTE IMMEDIATE
+                        'GRANT ALL ON '||r.owner||'.'||r.table_name||' to ' || grantee;
+                END LOOP;
+            END;
+  - version: 1
+    commands:
+      - checks:
+          - SELECT COUNT(username) from sys.dba_users WHERE username = 'JPMC'
+        execute:
+          - DROP USER jpmc cascade
+      - checks:
+          - SELECT COUNT(username) from sys.dba_users WHERE username = 'BREAKGLASS'
+        execute:
+          - DROP USER BREAKGLASS cascade
+      - checks:
+          - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMC_ADMIN'
+        execute:
+          - drop role RLE_JPMC_ADMIN
+      - checks:
+          - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMC_RO'
+        execute:
+          - drop role RLE_JPMC_RO
+      - checks:
+          - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMC_RW'
+        execute:
+          - drop role RLE_JPMC_RW
+      - checks:
+          - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_BREAKGLASS'
+        execute:
+          - drop role RLE_BREAKGLASS
+      - execute:
+          # Create an Application User, this User will be used by Application Users.
+          - CREATE USER JPMC IDENTIFIED BY "@@APPPASSWORD"
+          - ALTER USER JPMC QUOTA UNLIMITED ON USERS
+          - CREATE ROLE RLE_JPMC_ADMIN
+          - CREATE ROLE RLE_JPMC_RO
+          - CREATE ROLE RLE_JPMC_RW
+          - GRANT RLE_JPMC_ADMIN TO JPMC
+          - CREATE USER BREAKGLASS IDENTIFIED BY "@@BREAKGLASSPASSWORD"
+          - CREATE ROLE RLE_BREAKGLASS
+          # The Breakglass Role is a DBA Role
+          - GRANT dba TO RLE_BREAKGLASS
+          - GRANT RLE_BREAKGLASS TO BREAKGLASS
+          - UPDATE jpmcadmin.configuration SET version = 1
+destroy:
+  commands:
+    - checks:
+        - SELECT COUNT(username) FROM sys.dba_users WHERE username = 'JPMCADMIN'
+      execute:
+        - drop user JPMCADMIN cascade
+    - checks:
+        - SELECT COUNT(username) FROM sys.dba_users WHERE username = 'JPMC'
+      execute:
+        - drop user JPMC cascade
+    - checks:
+        - SELECT COUNT(username) FROM sys.dba_users WHERE username = 'BREAKGLASS'
+      execute:
+        - drop user BREAKGLASS cascade
+    - checks:
+        - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMCADMIN'
+      execute:
+        - drop role RLE_JPMCADMIN
+    - checks:
+        - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMC_RO'
+      execute:
+        - drop role RLE_JPMC_RO
+    - checks:
+        - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_JPMC_RW'
+      execute:
+        - drop role RLE_JPMC_RW
+    - checks:
+        - SELECT COUNT(ROLE) FROM sys.dba_roles WHERE ROLE = 'RLE_BREAKGLASS'
+      execute:
+        - drop role RLE_BREAKGLASS
+createUser:
+  commands:
+    # Pre-Requisites must all return Zero for the Command to Run
+    - checks:
+        - select count(username) FROM sys.dba_users where username = '@@USER'
+      execute:
+        - drop user @@USER cascade
+    - execute:
+        - CREATE USER @@USER IDENTIFIED BY "@@PASSWORD"
+        - GRANT RLE_JPMC_RO TO @@USER
+        - GRANT CREATE SESSION TO @@USER
+        - GRANT UNLIMITED TABLESPACE TO @@USER
+        - ALTER USER @@USER QUOTA UNLIMITED ON USERS
+        - >
+          BEGIN
+          FOR r IN (
+          SELECT owner, table_name
+          FROM all_tables
+          WHERE owner = 'JPMC'
+          )
+          LOOP
+          EXECUTE IMMEDIATE
+          'GRANT SELECT ON '||r.owner||'.'||r.table_name||' to RLE_JPMC_RO';
+          END LOOP;
+          END;
+createRWUser:
+  commands:
+    # Pre-Requisites must all return Zero for the Command to Run
+    - checks:
+        - select count(username) FROM sys.dba_users where username = '@@USER'
+      execute:
+        - drop user @@USER cascade
+    - execute:
+        - CREATE USER @@USER IDENTIFIED BY "@@PASSWORD"
+        - GRANT RLE_JPMC_RO TO @@USER
+        - GRANT CREATE SESSION TO @@USER
+        - GRANT UNLIMITED TABLESPACE TO @@USER
+        - ALTER USER @@USER QUOTA UNLIMITED ON USERS
+        - >
+          BEGIN
+          FOR r IN (
+          SELECT owner, table_name
+          FROM all_tables
+          WHERE owner = 'JPMC'
+          )
+          LOOP
+          EXECUTE IMMEDIATE
+          'GRANT SELECT ON '||r.owner||'.'||r.table_name||' to RLE_JPMC_RW';
+          END LOOP;
+          END;
+createAdminUser:
+  commands:
+    # Pre-Requisites must all return Zero for the Command to Run
+    - checks:
+        - select count(username) FROM sys.dba_users where username = '@@USER'
+      execute:
+        - drop user @@USER cascade
+    - execute:
+        - CREATE USER @@USER IDENTIFIED BY "@@PASSWORD"
+        - GRANT RLE_JPMC_RO TO @@USER
+        - GRANT CREATE SESSION TO @@USER
+        - GRANT UNLIMITED TABLESPACE TO @@USER
+        - ALTER USER @@USER QUOTA UNLIMITED ON USERS
+        - >
+          BEGIN
+          FOR r IN (
+          SELECT owner, table_name
+          FROM all_tables
+          WHERE owner = 'JPMC'
+          )
+          LOOP
+          EXECUTE IMMEDIATE
+          'GRANT SELECT ON '||r.owner||'.'||r.table_name||' to RLE_JPMC_ADMIN';
+          END LOOP;
+          END;
+lockUser:
+  commands:
+    - checks:
+        - select count(username) from sys.dba_users where username = '@@USER'
+    - execute:
+        - REVOKE CREATE SESSION FROM @@USER
+unlockUser:
+  commands:
+    - checks:
+        - select count(username) from sys.dba_users where username = '@@USER'
+    - execute:
+        - GRANT CREATE SESSION TO @@USER
+# Utility Commands
+schemaExists: select owner FROM sys.dba_objects where owner = '@@SCHEMA'
+getVersion: select version from jpmcadmin.configuration
